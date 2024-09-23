@@ -1,0 +1,5 @@
+0 jute
+1 maize
+2 rice
+3 sugarcane
+4 wheat
