@@ -6,19 +6,21 @@ import numpy as np
 # Streamlit app header
 st.title("Image Classification App")
 
-# Load the model
-model = load_model("keras_model.h5", compile=False)
+# Disable scientific notation for clarity in NumPy arrays
+np.set_printoptions(suppress=True)
 
+# Load the model
+model = load_model("keras_Model.h5", compile=False)
 
 # Load the labels
 class_names = open("labels.txt", "r").readlines()
 
 # Function to preprocess image
 def preprocess_image(image):
-    size = (224, 224)
+    size = (224, 224)  # Resize image to 224x224 as expected by the model
     image = ImageOps.fit(image, size, Image.Resampling.LANCZOS)
-    image_array = np.asarray(image)
-    normalized_image_array = (image_array.astype(np.float32) / 127.5) - 1
+    image_array = np.asarray(image)  # Convert image to numpy array
+    normalized_image_array = (image_array.astype(np.float32) / 127.5) - 1  # Normalize the image array
     return normalized_image_array
 
 # Streamlit file uploader to upload image
@@ -36,7 +38,9 @@ if uploaded_file is not None:
     # Make prediction
     prediction = model.predict(data)
     index = np.argmax(prediction)
-    class_name = class_names[index].strip()
+    
+    # Extract class name and remove the first two characters if necessary
+    class_name = class_names[index][2:].strip()  # Remove the label prefix if it exists
     confidence_score = prediction[0][index]
 
     # Display prediction results
