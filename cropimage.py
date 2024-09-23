@@ -11,7 +11,6 @@ np.set_printoptions(suppress=True)
 
 # Load the model
 model = load_model("keras_model.h5", compile=False)
-keras_model.h5
 
 # Load the labels
 class_names = open("labels.txt", "r").readlines()
@@ -19,7 +18,7 @@ class_names = open("labels.txt", "r").readlines()
 # Function to preprocess image
 def preprocess_image(image):
     size = (224, 224)  # Resize image to 224x224 as expected by the model
-    image = ImageOps.fit(image, size, Image.Resampling.LANCZOS)
+    image = ImageOps.fit(image, size, Image.LANCZOS)  # Use Image.LANCZOS
     image_array = np.asarray(image)  # Convert image to numpy array
     normalized_image_array = (image_array.astype(np.float32) / 127.5) - 1  # Normalize the image array
     return normalized_image_array
