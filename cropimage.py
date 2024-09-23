@@ -10,10 +10,22 @@ st.title("Image Classification App")
 np.set_printoptions(suppress=True)
 
 # Load the model
-model = load_model("keras_model.h5", compile=False)
+try:
+    model = load_model("keras_model.h5", compile=False)
+except Exception as e:
+    st.error(f"Error loading model: {e}")
+    st.stop()
 
 # Load the labels
-class_names = open("labels.txt", "r").readlines()
+try:
+    with open("labels.txt", "r") as f:
+        class_names = [line.strip() for line in f.readlines()]
+except FileNotFoundError:
+    st.error("Labels file not found.")
+    st.stop()
+except Exception as e:
+    st.error(f"Error loading labels: {e}")
+    st.stop()
 
 # Function to preprocess image
 def preprocess_image(image):
@@ -32,17 +44,20 @@ if uploaded_file is not None:
     st.image(image, caption='Uploaded Image', use_column_width=True)
 
     # Preprocess the image
-    data = np.ndarray(shape=(1, 224, 224, 3), dtype=np.float32)
-    data[0] = preprocess_image(image)
+    try:
+        data = np.ndarray(shape=(1, 224, 224, 3), dtype=np.float32)
+        data[0] = preprocess_image(image)
 
-    # Make prediction
-    prediction = model.predict(data)
-    index = np.argmax(prediction)
-    
-    # Extract class name and remove the first two characters if necessary
-    class_name = class_names[index][2:].strip()  # Remove the label prefix if it exists
-    confidence_score = prediction[0][index]
+        # Make prediction
+        prediction = model.predict(data)
+        index = np.argmax(prediction)
 
-    # Display prediction results
-    st.write(f"**Class:** {class_name}")
-    st.write(f"**Confidence Score:** {confidence_score:.2f}")
+        # Extract class name
+        class_name = class_names[index]  # Remove the label prefix if it exists based on your needs
+        confidence_score = prediction[0][index]
+
+        # Display prediction results
+        st.write(f"**Class:** {class_name}")
+        st.write(f"**Confidence Score:** {confidence_score:.2f}")
+    except Exception as e:
+        st.error(f"Error during prediction: {e}")
