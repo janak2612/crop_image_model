@@ -1,115 +1,89 @@
-import os
-import warnings
-import numpy as np
 import streamlit as st
 from PIL import Image, ImageOps
-import tensorflow.keras.models
-from tensorflow.keras.layers import DepthwiseConv2D
+import numpy as np
+from tensorflow.keras.models import load_model
 
-# --- INITIAL SETUP ---
-# Suppress TensorFlow warnings for cleaner output
-os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
-warnings.filterwarnings("ignore", message=".*GraphDef.*")
-warnings.filterwarnings("ignore", message=".*missing ScriptRunContext.*")
-
-# Set page configuration for a cleaner look
+# --- PAGE CONFIGURATION ---
 st.set_page_config(
-    page_title="Image Classification",
+    page_title="Image Classifier",
     page_icon="🖼️",
     layout="centered"
 )
 
-# --- CUSTOM LAYER FOR MODEL COMPATIBILITY ---
-# Teachable Machine models sometimes use a parameter that needs to be handled.
-class CustomDepthwiseConv2D(DepthwiseConv2D):
-    def __init__(self, *args, **kwargs):
-        if "groups" in kwargs:
-            del kwargs["groups"]
-        super().__init__(*args, **kwargs)
-
-# --- CORE FUNCTIONS (CACHED FOR EFFICIENCY) ---
+# --- MODEL AND LABELS LOADING ---
 @st.cache_resource
 def load_keras_model(model_path):
-    """Loads the Keras model from the specified path."""
+    """Loads the Keras model, caching it to improve performance."""
     try:
-        # Load the model with the custom layer to handle compatibility issues.
-        custom_objects = {"DepthwiseConv2D": CustomDepthwiseConv2D}
-        model = tensorflow.keras.models.load_model(model_path, custom_objects=custom_objects, compile=False)
+        # Load the model. The 'compile=False' is important for models from Teachable Machine.
+        model = load_model(model_path, compile=False)
         return model
     except Exception as e:
-        st.error(f"❌ **Error Loading Model:** Failed to load 'keras_model.h5'. Please ensure the file is in the correct directory and is not corrupted. \n\n*Details: {e}*")
+        st.error(f"❌ **Error Loading Model:** Could not load 'keras_Model.h5'. Please ensure the file is in the correct directory and is not corrupted. \n\n*Details: {e}*")
         return None
 
 @st.cache_data
-def load_labels(labels_path):
-    """Loads the class labels from a text file."""
+def load_class_labels(labels_path):
+    """Loads the class labels, caching them to improve performance."""
     try:
         with open(labels_path, "r") as f:
-            class_names = [line.strip() for line in f.readlines()]
+            class_names = f.readlines()
         return class_names
     except FileNotFoundError:
         st.error(f"❌ **Error Loading Labels:** 'labels.txt' not found. Please ensure the file is in the correct directory.")
         return None
 
-def preprocess_image(image: Image.Image) -> np.ndarray:
-    """
-    Prepares the uploaded image to be in the format the model expects.
-    - Resizes to 224x224 pixels
-    - Normalizes pixel values to be between -1 and 1
-    """
-    # Create a NumPy array to hold the image data
-    data = np.ndarray(shape=(1, 224, 224, 3), dtype=np.float32)
-    
-    # Resize and crop the image
-    size = (224, 224)
-    image = ImageOps.fit(image, size, Image.LANCZOS)
-    
-    # Convert image to a NumPy array
-    image_array = np.asarray(image)
-    
-    # Normalize the image
-    normalized_image_array = (image_array.astype(np.float32) / 127.5) - 1
-    
-    # Load the normalized image data into the array
-    data[0] = normalized_image_array
-    
-    return data
+# Load the model and labels from your files
+model = load_keras_model("keras_Model.h5")
+class_names = load_class_labels("labels.txt")
 
 # --- STREAMLIT APP UI ---
-st.title("🖼️ Image Classification App")
-st.write("Upload an image and this app will predict what it is, based on the trained model.")
+st.title("🖼️ Teachable Machine Image Classifier")
+st.write("Upload an image and the model will predict its class.")
 
-# Load the model and labels
-model = load_keras_model("keras_model.h5")
-class_names = load_labels("labels.txt")
-
-# Create the file uploader
+# Create the file uploader widget
 uploaded_file = st.file_uploader("📂 Choose an image...", type=["jpg", "png", "jpeg"])
 
 if uploaded_file is not None:
-    # Check if model and labels are loaded successfully before proceeding
+    # Ensure model and labels are loaded before proceeding
     if model is not None and class_names is not None:
+        # Open and display the uploaded image
         image = Image.open(uploaded_file).convert("RGB")
-        
-        # Display the uploaded image
         st.image(image, caption="Uploaded Image", use_column_width=True)
         st.divider()
-        
+
         # Add a button to trigger the prediction
         if st.button("🔍 Classify Image"):
             with st.spinner("Analyzing..."):
-                # Preprocess the image and make a prediction
-                processed_data = preprocess_image(image)
-                prediction = model.predict(processed_data)
-                
-                # Get the top prediction
+                # --- IMAGE PREPROCESSING ---
+                # Create a data array with the correct shape for the model
+                data = np.ndarray(shape=(1, 224, 224, 3), dtype=np.float32)
+
+                # Resize the image to 224x224 and crop from the center
+                size = (224, 224)
+                image = ImageOps.fit(image, size, Image.Resampling.LANCZOS)
+
+                # Turn the image into a numpy array
+                image_array = np.asarray(image)
+
+                # Normalize the image (scale pixel values to -1 to 1)
+                normalized_image_array = (image_array.astype(np.float32) / 127.5) - 1
+
+                # Load the preprocessed image into the data array
+                data[0] = normalized_image_array
+
+                # --- PREDICTION ---
+                # Predict the model
+                prediction = model.predict(data)
                 index = np.argmax(prediction)
                 class_name = class_names[index]
                 confidence_score = prediction[0][index]
-                
-                # Display the results
+
+                # --- DISPLAY RESULTS ---
                 st.success("✅ Prediction Complete!")
-                st.metric(label="**Predicted Class**", value=class_name.split(' ', 1)[1]) # Show class name after number
+                # Display the class name, stripping the leading number and space (e.g., "0 Cat" -> "Cat")
+                st.metric(label="**Predicted Class**", value=class_name[2:].strip())
+                # Display the confidence score as a percentage
                 st.metric(label="**Confidence Score**", value=f"{confidence_score:.2%}")
 else:
     st.info("Please upload an image file to get started.")
