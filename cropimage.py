@@ -26,36 +26,42 @@ class CustomDepthwiseConv2D(DepthwiseConv2D):
 @st.cache_resource
 def load_and_rebuild_model():
     """
-    Loads the original Keras model and robustly rebuilds it with a correct
-    single-input structure to fix issues from Teachable Machine models.
+    Loads the original Keras model and performs a deep rebuild to fix severe
+    structural issues from some Teachable Machine model versions.
     """
     try:
         custom_objects = {"DepthwiseConv2D": CustomDepthwiseConv2D}
-        # Load the base model, which might have a flawed structure
+        # Load the base model, which contains the flawed internal structure
         base_model = load_model("keras_model.h5", custom_objects=custom_objects, compile=False)
 
-        # --- Robust Model Rebuilding Logic ---
-        # Instead of guessing layer indices, find layers by their type.
+        # --- Deep Model Rebuilding Logic ---
+        # Find the main functional model and the final classification layer.
         core_model_layer = None
         classification_layer = None
-
         for layer in base_model.layers:
-            if isinstance(layer, Model):  # The main functional model
+            if isinstance(layer, Model):
                 core_model_layer = layer
-            elif isinstance(layer, Dense):  # The final classification layer
+            elif isinstance(layer, Dense):
                 classification_layer = layer
-        
+
         if core_model_layer is None or classification_layer is None:
             st.error("❌ **Model Structure Error:** Could not automatically identify the core and classification layers. The model structure may be unexpected.")
             return None
 
-        # 1. Create a new, single input tensor.
+        # 1. Create a new, single input tensor. This is our clean starting point.
         new_input = Input(shape=(224, 224, 3), name="new_input")
-        # 2. Connect the new input to the identified core model.
-        core_output = core_model_layer(new_input)
-        # 3. Connect the core output to the identified classification layer.
-        new_output = classification_layer(core_output)
-        # 4. Create the final, corrected model.
+
+        # 2. Rebuild the model from the inside out.
+        #    Take the layers from *inside* the flawed functional model and connect them manually.
+        #    We start with our new input and skip the original model's broken input layer (`core_model_layer.layers[1:]`).
+        x = new_input
+        for layer in core_model_layer.layers[1:]:
+            x = layer(x)
+
+        # 3. Connect the output of our rebuilt core to the original classification layer.
+        new_output = classification_layer(x)
+
+        # 4. Create the final, fully corrected model.
         model = Model(inputs=new_input, outputs=new_output)
         
         return model
@@ -132,3 +138,4 @@ if uploaded_file is not None and model is not None and class_names is not None:
 
 elif uploaded_file is None:
     st.info("Please upload an image file to begin.")
+
