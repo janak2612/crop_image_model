@@ -1,4 +1,4 @@
-```python
+
 import os
 # Force TensorFlow to use CPU only (suppress CUDA errors if GPU not available)
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
@@ -74,4 +74,5 @@ if uploaded_file is not None:
         st.write(f"**Confidence Score:** {confidence_score:.2f}")
     except Exception as e:
         st.error(f"❌ Error during prediction: {e}")
-```
+
+
