@@ -2,22 +2,22 @@
 import os
 import warnings
 
-# Suppress TensorFlow CUDA warnings (force CPU mode)
+# Suppress TensorFlow GPU/CUDA warnings (force CPU mode)
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 
 # Suppress Streamlit ScriptRunContext warning
 warnings.filterwarnings("ignore", message=".*missing ScriptRunContext.*")
 
 import streamlit as st
-from tensorflow.keras.models import load_model
-from tensorflow.keras.layers import DepthwiseConv2D
-from PIL import Image, ImageOps
 import numpy as np
+from tensorflow.keras.models import load_model, Model
+from tensorflow.keras.layers import DepthwiseConv2D, Input
+from PIL import Image, ImageOps
 
 # App title
 st.title("🖼️ Image Classification App")
 
-# Disable scientific notation for NumPy
+# Disable scientific notation in NumPy
 np.set_printoptions(suppress=True)
 
 # Custom DepthwiseConv2D for compatibility
@@ -27,15 +27,28 @@ class CustomDepthwiseConv2D(DepthwiseConv2D):
             del kwargs["groups"]
         super().__init__(*args, **kwargs)
 
-# Load the trained model
+# Load and fix model
 try:
     custom_objects = {"DepthwiseConv2D": CustomDepthwiseConv2D}
-    model = load_model("keras_model.h5", custom_objects=custom_objects, compile=False)
+    base_model = load_model("keras_model.h5", custom_objects=custom_objects, compile=False)
+
+    # If model has multiple inputs (Teachable Machine issue), keep only first input
+    if isinstance(base_model.inputs, list) and len(base_model.inputs) > 1:
+        model = Model(inputs=base_model.inputs[0], outputs=base_model.outputs)
+    else:
+        model = base_model
+
+    # Optional: rewrap with proper Input layer to avoid Dense input_shape warnings
+    if not hasattr(model, "_is_compiled"):  # crude check
+        inputs = Input(shape=(224, 224, 3))
+        outputs = model(inputs)
+        model = Model(inputs=inputs, outputs=outputs)
+
 except Exception as e:
     st.error(f"❌ Error loading model: {e}")
     st.stop()
 
-# Load class labels
+# Load labels
 try:
     with open("labels.txt", "r") as f:
         class_names = [line.strip() for line in f.readlines()]
@@ -64,11 +77,11 @@ if uploaded_file is not None:
     
     with st.spinner("🔍 Analyzing image..."):
         try:
-            # Preprocess input
+            # Preprocess
             data = np.ndarray(shape=(1, 224, 224, 3), dtype=np.float32)
             data[0] = preprocess_image(image)
             
-            # Run prediction
+            # Prediction
             prediction = model.predict(data)
             index = np.argmax(prediction)
             class_name = class_names[index]
@@ -80,4 +93,3 @@ if uploaded_file is not None:
             st.write(f"**Confidence Score:** {confidence_score:.2f}")
         except Exception as e:
             st.error(f"❌ Error during prediction: {e}")
-
