@@ -26,16 +26,14 @@ class CustomDepthwiseConv2D(DepthwiseConv2D):
 @st.cache_resource
 def load_and_rebuild_model():
     """
-    Loads the original Keras model and performs a deep rebuild to fix severe
-    structural issues from some Teachable Machine model versions.
+    Loads the Keras model and performs a robust graph reconstruction to fix
+    severe structural issues from Teachable Machine model versions.
     """
     try:
         custom_objects = {"DepthwiseConv2D": CustomDepthwiseConv2D}
-        # Load the base model, which contains the flawed internal structure
         base_model = load_model("keras_model.h5", custom_objects=custom_objects, compile=False)
 
-        # --- Deep Model Rebuilding Logic ---
-        # Find the main functional model and the final classification layer.
+        # --- Definitive Model Rebuilding via Graph Traversal ---
         core_model_layer = None
         classification_layer = None
         for layer in base_model.layers:
@@ -45,24 +43,43 @@ def load_and_rebuild_model():
                 classification_layer = layer
 
         if core_model_layer is None or classification_layer is None:
-            st.error("❌ **Model Structure Error:** Could not automatically identify the core and classification layers. The model structure may be unexpected.")
+            st.error("❌ **Model Structure Error:** Could not automatically identify the core and classification layers.")
             return None
 
-        # 1. Create a new, single input tensor. This is our clean starting point.
+        # 1. Create a new, single input tensor to serve as the start of our new graph.
         new_input = Input(shape=(224, 224, 3), name="new_input")
 
-        # 2. Rebuild the model from the inside out.
-        #    Take the layers from *inside* the flawed functional model and connect them manually.
-        #    We start with our new input and skip the original model's broken input layer (`core_model_layer.layers[1:]`).
-        x = new_input
+        # 2. Create a dictionary to map layers from the old model to the new tensors they will output.
+        tensor_map = {}
+        
+        # 3. Seed the map: the old input layer now maps to our new_input tensor.
+        tensor_map[core_model_layer.layers[0].name] = new_input
+
+        # 4. Iterate over every layer in the old model to rebuild the graph connection by connection.
         for layer in core_model_layer.layers[1:]:
-            x = layer(x)
+            # For each layer, find what its inputs were in the old model.
+            input_names = [node.inbound_layers.name for node in layer.inbound_nodes[0].flat_input_nodes]
+            
+            # Get the corresponding tensors from our new, rebuilt graph.
+            input_tensors = [tensor_map[name] for name in input_names]
+            
+            # Handle layers that have single vs. multiple inputs (e.g., Add, Concatenate).
+            if len(input_tensors) == 1:
+                new_tensor = layer(input_tensors[0])
+            else:
+                new_tensor = layer(input_tensors)
+                
+            # Add the new output tensor to our map, keyed by the current layer's name.
+            tensor_map[layer.name] = new_tensor
 
-        # 3. Connect the output of our rebuilt core to the original classification layer.
-        new_output = classification_layer(x)
+        # 5. The final output of the core model is the tensor from the last layer in the old graph.
+        final_core_tensor = tensor_map[core_model_layer.layers[-1].name]
 
-        # 4. Create the final, fully corrected model.
-        model = Model(inputs=new_input, outputs=new_output)
+        # 6. Connect this rebuilt core to the original classification layer.
+        final_output = classification_layer(final_core_tensor)
+
+        # 7. Create the final, fully corrected model from our new input and new output.
+        model = Model(inputs=new_input, outputs=final_output)
         
         return model
         
@@ -70,8 +87,7 @@ def load_and_rebuild_model():
         st.error("❌ **Model File Not Found:** Make sure 'keras_model.h5' is in the same folder as this script.")
         return None
     except Exception as e:
-        # This will catch the "truncated file" error if the file is corrupted.
-        st.error(f"❌ **Model Loading Error:** Failed to load or rebuild the model. The file may be corrupted. Please re-download it. \n\n*Details: {e}*")
+        st.error(f"❌ **Model Loading Error:** Failed to load or rebuild the model. Please check the file. \n\n*Details: {e}*")
         return None
 
 @st.cache_data
