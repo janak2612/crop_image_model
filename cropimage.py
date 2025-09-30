@@ -19,7 +19,9 @@ def load_keras_model_and_labels():
     speeding up the app on subsequent runs by caching the loaded model.
     """
     try:
+        from keras.models import load_model
         model = load_model("keras_model.h5", compile=False)
+        print("Model loaded successfully!")
         with open("labels.txt", "r") as f:
             class_names = f.readlines()
         return model, class_names
@@ -98,4 +100,5 @@ if uploaded_file is not None and model is not None:
             st.success("Classification Complete!")
             st.metric(label="Prediction", value=f"{class_name[2:].strip()}")
             st.metric(label="Confidence Score", value=f"{confidence_score:.2%}")
+
 
